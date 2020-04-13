@@ -23,6 +23,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"knative.dev/eventing-contrib/pkg/channel"
+)
+
+var (
+	dispatcherLabels = map[string]string{
+		"messaging.knative.dev/channel": "kafka-channel",
+		"messaging.knative.dev/role":    "dispatcher",
+	}
 )
 
 func TestNewDispatcherService(t *testing.T) {
@@ -49,7 +57,13 @@ func TestNewDispatcherService(t *testing.T) {
 		},
 	}
 
-	got := MakeDispatcherService(testNS)
+	args := channel.DispatcherArgs{
+		Name:      dispatcherName,
+		Namespace: testNS,
+		Labels:    dispatcherLabels,
+	}
+
+	got := channel.MakeDispatcherService(&args)
 
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("unexpected condition (-want, +got) = %v", diff)

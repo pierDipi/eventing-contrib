@@ -22,19 +22,22 @@ import (
 	"testing"
 
 	"github.com/Shopify/sarama"
-
 	"go.uber.org/zap"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	clientgotesting "k8s.io/client-go/testing"
-
-	eventingClient "knative.dev/eventing/pkg/client/injection/client"
+	"knative.dev/eventing-contrib/kafka/channel/pkg/apis/messaging/v1alpha1"
+	fakekafkaclient "knative.dev/eventing-contrib/kafka/channel/pkg/client/injection/client/fake"
+	"knative.dev/eventing-contrib/kafka/channel/pkg/client/injection/reconciler/messaging/v1alpha1/kafkachannel"
+	"knative.dev/eventing-contrib/kafka/channel/pkg/reconciler/controller/resources"
+	reconcilekafkatesting "knative.dev/eventing-contrib/kafka/channel/pkg/reconciler/testing"
+	reconcilertesting "knative.dev/eventing-contrib/kafka/channel/pkg/reconciler/testing"
+	. "knative.dev/eventing-contrib/kafka/channel/pkg/utils"
+	"knative.dev/eventing-contrib/pkg/channel"
 	"knative.dev/eventing/pkg/utils"
-
 	duckv1alpha1 "knative.dev/pkg/apis/duck/v1alpha1"
 	kubeclient "knative.dev/pkg/client/injection/kube/client"
 	"knative.dev/pkg/configmap"
@@ -43,14 +46,6 @@ import (
 	"knative.dev/pkg/logging"
 	logtesting "knative.dev/pkg/logging/testing"
 	. "knative.dev/pkg/reconciler/testing"
-
-	"knative.dev/eventing-contrib/kafka/channel/pkg/apis/messaging/v1alpha1"
-	fakekafkaclient "knative.dev/eventing-contrib/kafka/channel/pkg/client/injection/client/fake"
-	"knative.dev/eventing-contrib/kafka/channel/pkg/client/injection/reconciler/messaging/v1alpha1/kafkachannel"
-	"knative.dev/eventing-contrib/kafka/channel/pkg/reconciler/controller/resources"
-	reconcilekafkatesting "knative.dev/eventing-contrib/kafka/channel/pkg/reconciler/testing"
-	reconcilertesting "knative.dev/eventing-contrib/kafka/channel/pkg/reconciler/testing"
-	. "knative.dev/eventing-contrib/kafka/channel/pkg/utils"
 )
 
 const (
@@ -92,7 +87,7 @@ func TestAllCases(t *testing.T) {
 					reconcilekafkatesting.WithKafkaChannelDeleted)},
 			WantErr: false,
 			WantEvents: []string{
-				Eventf(corev1.EventTypeNormal, "KafkaChannelReconciled", `KafkaChannel reconciled: "test-namespace/test-kc"`),
+				Eventf(corev1.EventTypeNormal, "ChannelReconciled", `Channel reconciled: "test-namespace/test-kc"`),
 			},
 		}, {
 			Name: "deployment does not exist, automatically created and patching finalizers",
@@ -227,7 +222,7 @@ func TestAllCases(t *testing.T) {
 				),
 			}},
 			WantEvents: []string{
-				Eventf(corev1.EventTypeNormal, "KafkaChannelReconciled", `KafkaChannel reconciled: "test-namespace/test-kc"`),
+				Eventf(corev1.EventTypeNormal, "ChannelReconciled", `Channel reconciled: "test-namespace/test-kc"`),
 			},
 		}, {
 			Name: "Works, channel exists",
@@ -255,7 +250,7 @@ func TestAllCases(t *testing.T) {
 				),
 			}},
 			WantEvents: []string{
-				Eventf(corev1.EventTypeNormal, "KafkaChannelReconciled", `KafkaChannel reconciled: "test-namespace/test-kc"`),
+				Eventf(corev1.EventTypeNormal, "ChannelReconciled", `Channel reconciled: "test-namespace/test-kc"`),
 			},
 		}, {
 			Name: "channel exists, not owned by us",
@@ -278,11 +273,11 @@ func TestAllCases(t *testing.T) {
 					reconcilekafkatesting.WithKafkaChannelDeploymentReady(),
 					reconcilekafkatesting.WithKafkaChannelServiceReady(),
 					reconcilekafkatesting.WithKafkaChannelEndpointsReady(),
-					reconcilekafkatesting.WithKafkaChannelChannelServicetNotReady("ChannelServiceFailed", "Channel Service failed: kafkachannel: test-namespace/test-kc does not own Service: \"test-kc-kn-channel\""),
+					reconcilekafkatesting.WithKafkaChannelChannelServicetNotReady("ChannelServiceFailed", "Channel Service failed: channel: test-namespace/test-kc does not own Service: \"test-kc-kn-channel\""),
 				),
 			}},
 			WantEvents: []string{
-				Eventf(corev1.EventTypeWarning, "InternalError", `kafkachannel: test-namespace/test-kc does not own Service: "test-kc-kn-channel"`),
+				Eventf(corev1.EventTypeWarning, "InternalError", `channel: test-namespace/test-kc does not own Service: "test-kc-kn-channel"`),
 			},
 		}, {
 			Name: "channel does not exist, fails to create",
@@ -322,25 +317,14 @@ func TestAllCases(t *testing.T) {
 	defer logtesting.ClearAll()
 
 	table.Test(t, reconcilertesting.MakeFactory(func(ctx context.Context, listers *reconcilekafkatesting.Listers, cmw configmap.Watcher) controller.Reconciler {
-
 		r := &Reconciler{
-			systemNamespace: testNS,
-			dispatcherImage: testDispatcherImage,
+			baseReconciler: newBaseReconciler(ctx, listers),
 			kafkaConfig: &KafkaConfig{
 				Brokers: []string{brokerName},
 			},
-			kafkachannelLister: listers.GetKafkaChannelLister(),
-			// TODO fix
-			kafkachannelInformer: nil,
-			deploymentLister:     listers.GetDeploymentLister(),
-			serviceLister:        listers.GetServiceLister(),
-			endpointsLister:      listers.GetEndpointsLister(),
-			kafkaClusterAdmin:    &mockClusterAdmin{},
-			kafkaClientSet:       fakekafkaclient.Get(ctx),
-			KubeClientSet:        kubeclient.Get(ctx),
-			EventingClientSet:    eventingClient.Get(ctx),
+			kafkaClusterAdmin: &mockClusterAdmin{},
 		}
-		return kafkachannel.NewReconciler(ctx, logging.FromContext(ctx), r.kafkaClientSet, listers.GetKafkaChannelLister(), controller.GetEventRecorder(ctx), r)
+		return kafkachannel.NewReconciler(ctx, logging.FromContext(ctx), fakekafkaclient.Get(ctx), listers.GetKafkaChannelLister(), controller.GetEventRecorder(ctx), r)
 	}, zap.L()))
 }
 
@@ -374,7 +358,7 @@ func TestTopicExists(t *testing.T) {
 			),
 		}},
 		WantEvents: []string{
-			Eventf(corev1.EventTypeNormal, "KafkaChannelReconciled", `KafkaChannel reconciled: "test-namespace/test-kc"`),
+			Eventf(corev1.EventTypeNormal, "ChannelReconciled", `Channel reconciled: "test-namespace/test-kc"`),
 		},
 	}
 	defer logtesting.ClearAll()
@@ -382,17 +366,10 @@ func TestTopicExists(t *testing.T) {
 	row.Test(t, reconcilertesting.MakeFactory(func(ctx context.Context, listers *reconcilekafkatesting.Listers, cmw configmap.Watcher) controller.Reconciler {
 
 		r := &Reconciler{
-			systemNamespace: testNS,
-			dispatcherImage: testDispatcherImage,
+			baseReconciler: newBaseReconciler(ctx, listers),
 			kafkaConfig: &KafkaConfig{
 				Brokers: []string{brokerName},
 			},
-			kafkachannelLister: listers.GetKafkaChannelLister(),
-			// TODO fix
-			kafkachannelInformer: nil,
-			deploymentLister:     listers.GetDeploymentLister(),
-			serviceLister:        listers.GetServiceLister(),
-			endpointsLister:      listers.GetEndpointsLister(),
 			kafkaClusterAdmin: &mockClusterAdmin{
 				mockCreateTopicFunc: func(topic string, detail *sarama.TopicDetail, validateOnly bool) error {
 					errMsg := sarama.ErrTopicAlreadyExists.Error()
@@ -402,11 +379,9 @@ func TestTopicExists(t *testing.T) {
 					}
 				},
 			},
-			kafkaClientSet:    fakekafkaclient.Get(ctx),
-			KubeClientSet:     kubeclient.Get(ctx),
-			EventingClientSet: eventingClient.Get(ctx),
 		}
-		return kafkachannel.NewReconciler(ctx, logging.FromContext(ctx), r.kafkaClientSet, listers.GetKafkaChannelLister(), controller.GetEventRecorder(ctx), r)
+
+		return kafkachannel.NewReconciler(ctx, logging.FromContext(ctx), fakekafkaclient.Get(ctx), listers.GetKafkaChannelLister(), controller.GetEventRecorder(ctx), r)
 	}, zap.L()))
 }
 
@@ -435,7 +410,7 @@ func TestDeploymentUpdatedOnImageChange(t *testing.T) {
 				reconcilekafkatesting.WithKafkaFinalizer(finalizerName),
 				reconcilekafkatesting.WithKafkaChannelConfigReady(),
 				reconcilekafkatesting.WithKafkaChannelTopicReady(),
-				//				reconcilekafkatesting.WithKafkaChannelDeploymentReady(),
+				//reconcilekafkatesting.WithKafkaChannelDeploymentReady(),
 				reconcilekafkatesting.WithKafkaChannelServiceReady(),
 				reconcilekafkatesting.WithKafkaChannelEndpointsReady(),
 				reconcilekafkatesting.WithKafkaChannelChannelServiceReady(),
@@ -444,25 +419,17 @@ func TestDeploymentUpdatedOnImageChange(t *testing.T) {
 		}},
 		WantEvents: []string{
 			Eventf(corev1.EventTypeNormal, dispatcherDeploymentUpdated, "Dispatcher deployment updated"),
-			Eventf(corev1.EventTypeNormal, "KafkaChannelReconciled", `KafkaChannel reconciled: "test-namespace/test-kc"`),
+			Eventf(corev1.EventTypeNormal, "ChannelReconciled", `Channel reconciled: "test-namespace/test-kc"`),
 		},
 	}
 	defer logtesting.ClearAll()
 
 	row.Test(t, reconcilertesting.MakeFactory(func(ctx context.Context, listers *reconcilekafkatesting.Listers, cmw configmap.Watcher) controller.Reconciler {
-
 		r := &Reconciler{
-			systemNamespace: testNS,
-			dispatcherImage: testDispatcherImage,
+			baseReconciler: newBaseReconciler(ctx, listers),
 			kafkaConfig: &KafkaConfig{
 				Brokers: []string{brokerName},
 			},
-			kafkachannelLister: listers.GetKafkaChannelLister(),
-			// TODO fix
-			kafkachannelInformer: nil,
-			deploymentLister:     listers.GetDeploymentLister(),
-			serviceLister:        listers.GetServiceLister(),
-			endpointsLister:      listers.GetEndpointsLister(),
 			kafkaClusterAdmin: &mockClusterAdmin{
 				mockCreateTopicFunc: func(topic string, detail *sarama.TopicDetail, validateOnly bool) error {
 					errMsg := sarama.ErrTopicAlreadyExists.Error()
@@ -472,12 +439,26 @@ func TestDeploymentUpdatedOnImageChange(t *testing.T) {
 					}
 				},
 			},
-			kafkaClientSet:    fakekafkaclient.Get(ctx),
-			KubeClientSet:     kubeclient.Get(ctx),
-			EventingClientSet: eventingClient.Get(ctx),
 		}
-		return kafkachannel.NewReconciler(ctx, logging.FromContext(ctx), r.kafkaClientSet, listers.GetKafkaChannelLister(), controller.GetEventRecorder(ctx), r)
+
+		return kafkachannel.NewReconciler(ctx, logging.FromContext(ctx), fakekafkaclient.Get(ctx), listers.GetKafkaChannelLister(), controller.GetEventRecorder(ctx), r)
 	}, zap.L()))
+}
+
+func newBaseReconciler(ctx context.Context, listers *reconcilertesting.Listers) *channel.BaseReconciler {
+	return &channel.BaseReconciler{
+		KubeClientSet:      kubeclient.Get(ctx),
+		DeploymentLister:   listers.GetDeploymentLister(),
+		ServiceLister:      listers.GetServiceLister(),
+		EndpointsLister:    listers.GetEndpointsLister(),
+		DispatcherName:     dispatcherName,
+		DispatcherImage:    testDispatcherImage,
+		DispatcherLabels:   dispatcherLabels,
+		SystemNamespace:    testNS,
+		ServiceAccountName: serviceAccountName,
+		DispatcherOptions:  []channel.DispatcherOption{resources.WithConfigVolume()},
+		MessagingRole:      messagingRole,
+	}
 }
 
 type mockClusterAdmin struct {
@@ -503,7 +484,7 @@ func (ca *mockClusterAdmin) DeleteTopic(topic string) error {
 	return nil
 }
 
-func (ca *mockClusterAdmin) DescribeTopics(topics []string) (metadata []*sarama.TopicMetadata, err error) {
+func (ca *mockClusterAdmin) DescribeTopics(_ []string) (metadata []*sarama.TopicMetadata, err error) {
 	return nil, nil
 }
 
@@ -511,31 +492,31 @@ func (ca *mockClusterAdmin) ListTopics() (map[string]sarama.TopicDetail, error) 
 	return nil, nil
 }
 
-func (ca *mockClusterAdmin) CreatePartitions(topic string, count int32, assignment [][]int32, validateOnly bool) error {
+func (ca *mockClusterAdmin) CreatePartitions(_ string, _ int32, _ [][]int32, _ bool) error {
 	return nil
 }
 
-func (ca *mockClusterAdmin) DeleteRecords(topic string, partitionOffsets map[int32]int64) error {
+func (ca *mockClusterAdmin) DeleteRecords(_ string, _ map[int32]int64) error {
 	return nil
 }
 
-func (ca *mockClusterAdmin) DescribeConfig(resource sarama.ConfigResource) ([]sarama.ConfigEntry, error) {
+func (ca *mockClusterAdmin) DescribeConfig(_ sarama.ConfigResource) ([]sarama.ConfigEntry, error) {
 	return nil, nil
 }
 
-func (ca *mockClusterAdmin) AlterConfig(resourceType sarama.ConfigResourceType, name string, entries map[string]*string, validateOnly bool) error {
+func (ca *mockClusterAdmin) AlterConfig(_ sarama.ConfigResourceType, _ string, _ map[string]*string, _ bool) error {
 	return nil
 }
 
-func (ca *mockClusterAdmin) CreateACL(resource sarama.Resource, acl sarama.Acl) error {
+func (ca *mockClusterAdmin) CreateACL(_ sarama.Resource, _ sarama.Acl) error {
 	return nil
 }
 
-func (ca *mockClusterAdmin) ListAcls(filter sarama.AclFilter) ([]sarama.ResourceAcls, error) {
+func (ca *mockClusterAdmin) ListAcls(_ sarama.AclFilter) ([]sarama.ResourceAcls, error) {
 	return nil, nil
 }
 
-func (ca *mockClusterAdmin) DeleteACL(filter sarama.AclFilter, validateOnly bool) ([]sarama.MatchingAcl, error) {
+func (ca *mockClusterAdmin) DeleteACL(_ sarama.AclFilter, _ bool) ([]sarama.MatchingAcl, error) {
 	return nil, nil
 }
 
@@ -543,11 +524,11 @@ func (ca *mockClusterAdmin) ListConsumerGroups() (map[string]string, error) {
 	return nil, nil
 }
 
-func (ca *mockClusterAdmin) DescribeConsumerGroups(groups []string) ([]*sarama.GroupDescription, error) {
+func (ca *mockClusterAdmin) DescribeConsumerGroups(_ []string) ([]*sarama.GroupDescription, error) {
 	return nil, nil
 }
 
-func (ca *mockClusterAdmin) ListConsumerGroupOffsets(group string, topicPartitions map[string][]int32) (*sarama.OffsetFetchResponse, error) {
+func (ca *mockClusterAdmin) ListConsumerGroupOffsets(_ string, _ map[string][]int32) (*sarama.OffsetFetchResponse, error) {
 	return &sarama.OffsetFetchResponse{}, nil
 }
 
@@ -556,15 +537,18 @@ func (ca *mockClusterAdmin) DescribeCluster() (brokers []*sarama.Broker, control
 }
 
 // Delete a consumer group.
-func (ca *mockClusterAdmin) DeleteConsumerGroup(group string) error {
+func (ca *mockClusterAdmin) DeleteConsumerGroup(_ string) error {
 	return nil
 }
 
 func makeDeploymentWithImage(image string) *appsv1.Deployment {
-	return resources.MakeDispatcher(resources.DispatcherArgs{
-		DispatcherNamespace: testNS,
-		Image:               image,
-	})
+	return channel.MakeDispatcherDeployment(&channel.DispatcherArgs{
+		Namespace:          testNS,
+		Name:               dispatcherName,
+		Image:              image,
+		ServiceAccountName: serviceAccountName,
+		Labels:             dispatcherLabels,
+	}, resources.WithConfigVolume())
 }
 
 func makeDeployment() *appsv1.Deployment {
@@ -578,7 +562,12 @@ func makeReadyDeployment() *appsv1.Deployment {
 }
 
 func makeService() *corev1.Service {
-	return resources.MakeDispatcherService(testNS)
+	args := channel.DispatcherArgs{
+		Name:      dispatcherName,
+		Namespace: testNS,
+		Labels:    dispatcherLabels,
+	}
+	return channel.MakeDispatcherService(&args)
 }
 
 func makeChannelService(nc *v1alpha1.KafkaChannel) *corev1.Service {
@@ -591,7 +580,7 @@ func makeChannelService(nc *v1alpha1.KafkaChannel) *corev1.Service {
 			Namespace: testNS,
 			Name:      fmt.Sprintf("%s-kn-channel", kcName),
 			Labels: map[string]string{
-				resources.MessagingRoleLabel: resources.MessagingRole,
+				channel.MessagingRoleLabel: messagingRole,
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				*kmeta.NewControllerRef(nc),
@@ -614,7 +603,7 @@ func makeChannelServiceNotOwnedByUs() *corev1.Service {
 			Namespace: testNS,
 			Name:      fmt.Sprintf("%s-kn-channel", kcName),
 			Labels: map[string]string{
-				resources.MessagingRoleLabel: resources.MessagingRole,
+				channel.MessagingRoleLabel: messagingRole,
 			},
 		},
 		Spec: corev1.ServiceSpec{

@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"k8s.io/client-go/rest"
@@ -28,9 +29,12 @@ import (
 	_ "knative.dev/pkg/client/injection/kube/informers/apps/v1/deployment/fake"
 	_ "knative.dev/pkg/client/injection/kube/informers/core/v1/endpoints/fake"
 	_ "knative.dev/pkg/client/injection/kube/informers/core/v1/service/fake"
+	_ "knative.dev/pkg/client/injection/kube/informers/core/v1/serviceaccount/fake"
+	_ "knative.dev/pkg/client/injection/kube/informers/rbac/v1/rolebinding/fake"
 )
 
 func TestNewController(t *testing.T) {
+	_ = os.Setenv("DISPATCHER_IMAGE", "image")
 	ctx, _ := injection.Fake.SetupInformers(context.Background(), &rest.Config{})
 	// no panic
 	_ = NewController(ctx)

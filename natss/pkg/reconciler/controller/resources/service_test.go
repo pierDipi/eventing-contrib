@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"testing"
 
+	"knative.dev/eventing-contrib/pkg/channel"
+
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,13 +39,13 @@ const (
 )
 
 func TestMakeExternalServiceAddress(t *testing.T) {
-	if want, got := "my-test-service.my-test-ns.svc.cluster.local", MakeExternalServiceAddress(testNS, serviceName); want != got {
+	if want, got := "my-test-service.my-test-ns.svc.cluster.local", channel.MakeExternalServiceAddress(testNS, serviceName); want != got {
 		t.Errorf("Want: %q got %q", want, got)
 	}
 }
 
 func TestMakeChannelServiceAddress(t *testing.T) {
-	if want, got := "my-test-nc-kn-channel", MakeChannelServiceName(ncName); want != got {
+	if want, got := "my-test-nc-kn-channel", channel.MakeChannelServiceName(ncName); want != got {
 		t.Errorf("Want: %q got %q", want, got)
 	}
 }
@@ -64,7 +66,7 @@ func TestMakeService(t *testing.T) {
 			Name:      fmt.Sprintf("%s-kn-channel", ncName),
 			Namespace: testNS,
 			Labels: map[string]string{
-				MessagingRoleLabel: MessagingRole,
+				channel.MessagingRoleLabel: "natss-channel",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				*kmeta.NewControllerRef(imc),
@@ -73,15 +75,22 @@ func TestMakeService(t *testing.T) {
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
 				{
-					Name:     portName,
+					Name:     "http",
 					Protocol: corev1.ProtocolTCP,
-					Port:     portNumber,
+					Port:     80,
 				},
 			},
 		},
 	}
 
-	got, err := MakeK8sService(imc)
+	args := channel.ChannelServiceArgs{
+		MessagingRoleLabel: channel.MessagingRoleLabel,
+		MessagingRole:      "natss-channel",
+		PortName:           "http",
+		Port:               80,
+	}
+
+	got, err := channel.MakeK8sService(imc, &args)
 	if err != nil {
 		t.Fatalf("Failed to create new service: %s", err)
 	}
@@ -107,7 +116,7 @@ func TestMakeServiceWithExternal(t *testing.T) {
 			Name:      fmt.Sprintf("%s-kn-channel", ncName),
 			Namespace: testNS,
 			Labels: map[string]string{
-				MessagingRoleLabel: MessagingRole,
+				channel.MessagingRoleLabel: "natss-channel",
 			},
 			OwnerReferences: []metav1.OwnerReference{
 				*kmeta.NewControllerRef(imc),
@@ -118,8 +127,14 @@ func TestMakeServiceWithExternal(t *testing.T) {
 			ExternalName: "dispatcher-name.dispatcher-namespace.svc.cluster.local",
 		},
 	}
+	args := channel.ChannelServiceArgs{
+		MessagingRoleLabel: channel.MessagingRoleLabel,
+		MessagingRole:      "natss-channel",
+		PortName:           "http",
+		Port:               80,
+	}
 
-	got, err := MakeK8sService(imc, ExternalService(dispatcherNS, dispatcherName))
+	got, err := channel.MakeK8sService(imc, &args, channel.ExternalService(dispatcherNS, dispatcherName))
 	if err != nil {
 		t.Fatalf("Failed to create new service: %s", err)
 	}
@@ -136,7 +151,13 @@ func TestMakeServiceWithFailingOption(t *testing.T) {
 			Namespace: testNS,
 		},
 	}
-	_, err := MakeK8sService(imc, func(svc *corev1.Service) error { return errors.New("test-induced failure") })
+	args := channel.ChannelServiceArgs{
+		MessagingRoleLabel: channel.MessagingRoleLabel,
+		MessagingRole:      "natss-channel",
+		PortName:           "http",
+		Port:               80,
+	}
+	_, err := channel.MakeK8sService(imc, &args, func(svc *corev1.Service) error { return errors.New("test-induced failure") })
 	if err == nil {
 		t.Fatalf("Expcted error from new service but got none")
 	}

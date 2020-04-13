@@ -19,6 +19,8 @@ package resources
 import (
 	"testing"
 
+	"knative.dev/eventing-contrib/pkg/channel"
+
 	"github.com/google/go-cmp/cmp"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,7 +34,7 @@ func TestNewServiceAccount(t *testing.T) {
 		},
 	}
 
-	got := MakeServiceAccount(testNS, serviceAccountName)
+	got := channel.MakeServiceAccount(testNS, serviceAccountName)
 
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("unexpected condition (-want, +got) = %v", diff)

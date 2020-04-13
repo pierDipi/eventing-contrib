@@ -50,6 +50,19 @@ rules:
       - "" # Core API group.
     resources:
       - services
+    verbs: &everything
+      - get
+      - list
+      - watch
+      - create
+      - patch
+      - update
+  - apiGroups:
+      - "" # Core API Group.
+    resources:
+      - configmaps
+    resourceNames:
+      - natss-ch-dispatcher
     verbs:
       - update
   - apiGroups:
@@ -81,7 +94,19 @@ rules:
     resources:
       - deployments
       - deployments/status
-    verbs:
-      - get
-      - list
-      - watch
+    verbs: *everything
+  - apiGroups:
+      - "" # Core API group.
+    resources:
+      - serviceaccounts
+    verbs: *everything
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - rolebindings
+    verbs: *everything
+  - apiGroups:
+      - "coordination.k8s.io"
+    resources:
+      - leases
+    verbs: *everything

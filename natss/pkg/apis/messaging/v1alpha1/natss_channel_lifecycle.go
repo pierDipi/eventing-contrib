@@ -128,3 +128,11 @@ func (cs *NatssChannelStatus) MarkEndpointsFailed(reason, messageFormat string, 
 func (cs *NatssChannelStatus) MarkEndpointsTrue() {
 	nc.Manage(cs).MarkTrue(NatssChannelConditionEndpointsReady)
 }
+
+func (cs *NatssChannelStatus) MarkDispatcherUnknown(reason, messageFormat string, messageA ...interface{}) {
+	nc.Manage(cs).MarkUnknown(NatssChannelConditionDispatcherReady, reason, messageFormat, messageA...)
+}
+
+func (cs *NatssChannelStatus) MarkServiceUnknown(reason, messageFormat string, messageA ...interface{}) {
+	nc.Manage(cs).MarkUnknown(NatssChannelConditionServiceReady, reason, messageFormat, messageA...)
+}

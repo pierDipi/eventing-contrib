@@ -20,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"knative.dev/eventing-contrib/pkg/channel"
 	eventingduck "knative.dev/eventing/pkg/apis/duck/v1alpha1"
 	"knative.dev/pkg/apis"
 	duckv1alpha1 "knative.dev/pkg/apis/duck/v1alpha1"
@@ -93,4 +94,8 @@ type KafkaChannelList struct {
 // GetGroupVersionKind returns GroupVersionKind for KafkaChannels
 func (c *KafkaChannel) GetGroupVersionKind() schema.GroupVersionKind {
 	return SchemeGroupVersion.WithKind("KafkaChannel")
+}
+
+func (c *KafkaChannel) GetStatus() channel.Status {
+	return &c.Status
 }

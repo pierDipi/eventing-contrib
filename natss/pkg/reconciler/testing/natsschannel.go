@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/sets"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -70,6 +72,14 @@ func WithNatssInitChannelConditions(nc *v1alpha1.NatssChannel) {
 
 func WithNatssChannelFinalizer(nc *v1alpha1.NatssChannel) {
 	nc.Finalizers = []string{"natss-ch-dispatcher"}
+}
+
+func WithNatssChannelFinalizerOption(finalizerName string) NatssChannelOption {
+	return func(nc *v1alpha1.NatssChannel) {
+		finalizers := sets.NewString(nc.Finalizers...)
+		finalizers.Insert(finalizerName)
+		nc.SetFinalizers(finalizers.List())
+	}
 }
 
 func WithNatssChannelDeleted(nc *v1alpha1.NatssChannel) {

@@ -20,6 +20,8 @@ import (
 	"os"
 	"testing"
 
+	"knative.dev/eventing-contrib/pkg/channel"
+
 	"github.com/google/go-cmp/cmp"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -34,10 +36,14 @@ const (
 func TestNewDispatcher(t *testing.T) {
 	os.Setenv(system.NamespaceEnvKey, "knative-testing")
 
-	args := DispatcherArgs{
-		DispatcherScope:     "cluster",
-		DispatcherNamespace: testNS,
-		Image:               imageName,
+	args := channel.DispatcherArgs{
+		Scope:                    "cluster",
+		Namespace:                testNS,
+		Image:                    imageName,
+		Name:                     dispatcherName,
+		Labels:                   dispatcherLabels,
+		ConfigLeaderElectionName: "config-leader-election-kafka",
+		ServiceAccountName:       dispatcherName,
 	}
 
 	replicas := int32(1)
@@ -106,7 +112,7 @@ func TestNewDispatcher(t *testing.T) {
 		},
 	}
 
-	got := MakeDispatcher(args)
+	got := channel.MakeDispatcherDeployment(&args, WithConfigVolume())
 
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("unexpected condition (-want, +got) = %v", diff)
@@ -116,10 +122,14 @@ func TestNewDispatcher(t *testing.T) {
 func TestNewNamespaceDispatcher(t *testing.T) {
 	os.Setenv(system.NamespaceEnvKey, "knative-testing")
 
-	args := DispatcherArgs{
-		DispatcherScope:     "namespace",
-		DispatcherNamespace: testNS,
-		Image:               imageName,
+	args := channel.DispatcherArgs{
+		Name:                     dispatcherName,
+		Scope:                    "namespace",
+		Namespace:                testNS,
+		Image:                    imageName,
+		Labels:                   dispatcherLabels,
+		ConfigLeaderElectionName: "config-leader-election-kafka",
+		ServiceAccountName:       dispatcherName,
 	}
 
 	replicas := int32(1)
@@ -194,7 +204,7 @@ func TestNewNamespaceDispatcher(t *testing.T) {
 		},
 	}
 
-	got := MakeDispatcher(args)
+	got := channel.MakeDispatcherDeployment(&args, WithConfigVolume())
 
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("unexpected condition (-want, +got) = %v", diff)

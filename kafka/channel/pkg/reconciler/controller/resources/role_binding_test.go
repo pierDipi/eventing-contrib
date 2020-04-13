@@ -19,6 +19,8 @@ package resources
 import (
 	"testing"
 
+	"knative.dev/eventing-contrib/pkg/channel"
+
 	"github.com/google/go-cmp/cmp"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,8 +51,8 @@ func TestNewRoleBinding(t *testing.T) {
 		},
 	}
 
-	sa := MakeServiceAccount(testNS, serviceAccountName)
-	got := MakeRoleBinding(testNS, rbName, sa, crName)
+	sa := channel.MakeServiceAccount(testNS, serviceAccountName)
+	got := channel.MakeRoleBinding(testNS, rbName, sa, crName)
 
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("unexpected condition (-want, +got) = %v", diff)

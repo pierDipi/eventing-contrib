@@ -20,6 +20,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"knative.dev/eventing-contrib/pkg/channel"
 	eventingduck "knative.dev/eventing/pkg/apis/duck/v1alpha1"
 	"knative.dev/pkg/apis"
 	duckv1alpha1 "knative.dev/pkg/apis/duck/v1alpha1"
@@ -49,6 +50,9 @@ type NatssChannel struct {
 var _ apis.Validatable = (*NatssChannel)(nil)
 var _ apis.Defaultable = (*NatssChannel)(nil)
 var _ runtime.Object = (*NatssChannel)(nil)
+
+// Check that Channel implements the common channel interface.
+var _ channel.Channel = (*NatssChannel)(nil)
 
 // NatssChannelSpec defines the specification for a NatssChannel.
 type NatssChannelSpec struct {
@@ -87,4 +91,8 @@ type NatssChannelList struct {
 // GetGroupVersionKind returns GroupVersionKind for NatssChannels
 func (c *NatssChannel) GetGroupVersionKind() schema.GroupVersionKind {
 	return SchemeGroupVersion.WithKind("NatssChannel")
+}
+
+func (c *NatssChannel) GetStatus() channel.Status {
+	return &c.Status
 }

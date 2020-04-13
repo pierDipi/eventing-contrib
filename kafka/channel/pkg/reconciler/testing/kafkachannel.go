@@ -57,12 +57,14 @@ func WithKafkaChannelDeleted(nc *v1alpha1.KafkaChannel) {
 	nc.ObjectMeta.SetDeletionTimestamp(&deleteTime)
 }
 
+// TODO(pierDipi) as channel option
 func WithKafkaChannelTopicReady() KafkaChannelOption {
 	return func(nc *v1alpha1.KafkaChannel) {
 		nc.Status.MarkTopicTrue()
 	}
 }
 
+// TODO(pierDipi) as channel option
 func WithKafkaChannelConfigReady() KafkaChannelOption {
 	return func(nc *v1alpha1.KafkaChannel) {
 		nc.Status.MarkConfigTrue()
